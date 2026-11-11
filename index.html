@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apartman Yönetimi</title>
+<style>
+:root{--navy:#1e3a5f;--blue:#2f6fb3;--bg:#f2f5f9;--red:#c0392b;--green:#1e8a5a;--amber:#e9a100}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,Segoe UI,Arial,sans-serif;background:var(--bg);color:#1b2733;line-height:1.5}
+header{background:var(--navy);color:#fff;padding:14px 20px}
+header h1{margin:0;font-size:1.3rem}
+.wrap{max-width:960px;margin:0 auto;padding:16px}
+nav{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+nav button{border:0;background:#fff;padding:10px 16px;border-radius:10px;cursor:pointer;font:inherit;font-weight:600;color:var(--navy)}
+nav button.on{background:var(--blue);color:#fff}
+.card{background:#fff;border-radius:14px;padding:16px;margin-bottom:16px;box-shadow:0 1px 8px rgba(0,0,0,.07)}
+h2{margin:0 0 12px;font-size:1.15rem}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.stat{background:#fff;border-radius:14px;padding:14px;box-shadow:0 1px 8px rgba(0,0,0,.07)}
+.stat small{color:#5b6b7a}.stat b{display:block;font-size:1.5rem}
+.red{color:var(--red)}.green{color:var(--green)}
+#alert{padding:12px 16px;border-radius:12px;margin-bottom:16px;font-weight:600;display:none}
+#alert.warn{display:block;background:#fff3d6;color:#7a5200}
+#alert.late{display:block;background:#fde2df;color:#8f1d12}
+#alert.ok{display:block;background:#dff3e8;color:#14603f}
+form{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+input,select{padding:9px 10px;border:1px solid #c5d0db;border-radius:8px;font:inherit}
+button.b{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:9px 16px;cursor:pointer;font:inherit;font-weight:600}
+button.d{background:none;border:0;color:var(--red);cursor:pointer;font-size:1.1rem}
+a.wa{background:#25d366;color:#fff;text-decoration:none;padding:5px 10px;border-radius:8px;font-size:.85rem;font-weight:600}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:8px 6px;border-bottom:1px solid #e5ebf1;font-size:.95rem}
+.scroll{overflow-x:auto}
+.empty{color:#6b7b8a}
+.hide{display:none}
+:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+</style>
+</head>
+<body>
+<header><h1>🏢 Apartman Yönetimi</h1></header>
+<div class="wrap">
+<div id="alert" role="status"></div>
+<nav id="nav"></nav>
+
+<section id="v-ozet">
+<div class="stats" id="stats"></div>
+<div class="card" style="margin-top:16px">
+<h2>Aidat son ödeme günü</h2>
+<form id="fdue">Her ayın <input id="due" type="number" min="1" max="28" style="width:80px"> . günü
+<button class="b" type="submit">Kaydet</button></form>
+<p class="empty" style="margin:0">Site açıldığında son güne 3 gün veya daha az kalmışsa ya da süre geçmişse üstte uyarı çıkar.</p>
+</div>
+<div class="card"><h2>Borcu olan daireler</h2><div class="scroll" id="debtors"></div></div>
+</section>
+
+<section id="v-daire" class="hide">
+<div class="card"><h2>Daire ekle</h2>
+<form id="fa">
+<input id="an" placeholder="Daire no" required style="width:100px">
+<input id="aname" placeholder="Ad Soyad" required>
+<input id="aph" placeholder="Telefon (05xx...)" style="width:160px">
+<input id="aam" type="number" min="0" placeholder="Aylık aidat ₺" required style="width:140px">
+<label>Borç başlangıcı <input id="asn" type="month" required></label>
+<button class="b" type="submit">Ekle</button>
+</form>
+<div class="scroll" id="alist"></div></div>
+</section>
+
+<section id="v-aidat" class="hide">
+<div class="card"><h2>Aylık aidat takibi</h2>
+<form onsubmit="return false">Ay: <input id="pm" type="month"></form>
+<div class="scroll" id="plist"></div></div>
+</section>
+
+<section id="v-gider" class="hide">
+<div class="card"><h2>Gider ekle</h2>
+<form id="fg">
+<input id="gd" type="date" required>
+<input id="gdesc" placeholder="Açıklama (elektrik, asansör...)" required style="flex:1;min-width:180px">
+<input id="gam" type="number" min="0" step="0.01" placeholder="Tutar ₺" required style="width:130px">
+<button class="b" type="submit">Ekle</button>
+</form>
+<div class="scroll" id="glist"></div></div>
+</section>
+</div>
+
+<script>
+var KEY="apartman_v1",S={apts:[],pays:{},exp:[],due:15};
+try{var r=localStorage.getItem(KEY);if(r)S=JSON.parse(r)}catch(e){}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function $(i){return document.getElementById(i)}
+function esc(t){var d=document.createElement("div");d.textContent=t;return d.innerHTML}
+function tl(n){return Number(n).toLocaleString("tr-TR")+" ₺"}
+function ym(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")}
+var now=new Date(),NOW=ym(now);
+var MN=["Ocak","Şubat","Mart","Nisan","Mayıs","Haziran","Temmuz","Ağustos","Eylül","Ekim","Kasım","Aralık"];
+function mname(m){var p=m.split("-");return MN[+p[1]-1]+" "+p[0]}
+function months(a,b){var o=[],y=+a.slice(0,4),m=+a.slice(5);while(y+"-"+String(m).padStart(2,"0")<=b){o.push(y+"-"+String(m).padStart(2,"0"));m++;if(m>12){m=1;y++}}return o}
+function paid(m,id){return S.pays[m]&&S.pays[m][id]!=null}
+function unpaidMonths(a){return months(a.since,NOW).filter(function(m){return !paid(m,a.id)})}
+function debt(a){return unpaidMonths(a).length*a.aidat}
+function wa(a){var p=(a.phone||"").replace(/\D/g,"");if(p.charAt(0)==="0")p="9"+p;if(!p)return"";
+ var t="Merhaba "+a.name+", daire "+a.no+" için "+unpaidMonths(a).length+" aylık aidat borcunuz var. Toplam: "+debt(a)+" TL. Müsait olduğunuzda ödeme yapmanızı rica ederiz.";
+ return '<a class="wa" target="_blank" rel="noopener" href="https://wa.me/'+p+'?text='+encodeURIComponent(t)+'">WhatsApp</a>'}
+
+function alertBar(){
+ var el=$("alert"),un=S.apts.filter(function(a){return !paid(NOW,a.id)&&a.since<=NOW}).length;
+ el.className="";el.textContent="";
+ if(!S.apts.length)return;
+ var left=S.due-now.getDate();
+ if(!un){el.className="ok";el.textContent="✅ Bu ayın tüm aidatları ödendi.";return}
+ if(left<0){el.className="late";el.textContent="⚠️ Son ödeme günü geçti! Bu ay "+un+" dairenin aidatı ödenmedi."}
+ else if(left<=3){el.className="warn";el.textContent="⏰ Aidat son gününe "+(left===0?"bugün son gün":left+" gün kaldı")+". Ödemeyen daire: "+un}
+}
+function ozet(){
+ var exp=0,col=0,tot=0,monthCol=0,monthExp=0;
+ S.apts.forEach(function(a){if(a.since<=NOW)exp+=a.aidat;tot+=debt(a)});
+ for(var m in S.pays)for(var id in S.pays[m]){col+=S.pays[m][id];if(m===NOW)monthCol+=S.pays[m][id]}
+ var gAll=0;S.exp.forEach(function(g){gAll+=g.amt;if(g.date.slice(0,7)===NOW)monthExp+=g.amt});
+ $("stats").innerHTML=
+ '<div class="stat"><small>Daire sayısı</small><b>'+S.apts.length+'</b></div>'+
+ '<div class="stat"><small>Bu ay toplanan</small><b class="green">'+tl(monthCol)+'</b></div>'+
+ '<div class="stat"><small>Toplam borç</small><b class="red">'+tl(tot)+'</b></div>'+
+ '<div class="stat"><small>Bu ay gider</small><b>'+tl(monthExp)+'</b></div>'+
+ '<div class="stat"><small>Kasa (toplanan − gider)</small><b>'+tl(col-gAll)+'</b></div>';
+ var rows=S.apts.filter(function(a){return debt(a)>0}).map(function(a){
+  return "<tr><td>"+esc(a.no)+"</td><td>"+esc(a.name)+"</td><td>"+unpaidMonths(a).length+" ay</td><td class='red'><b>"+tl(debt(a))+"</b></td><td>"+wa(a)+"</td></tr>"});
+ $("debtors").innerHTML=rows.length?"<table><tr><th>Daire</th><th>Ad</th><th>Gecikme</th><th>Borç</th><th></th></tr>"+rows.join("")+"</table>":'<p class="empty">Borcu olan daire yok. 🎉</p>';
+ $("due").value=S.due;
+}
+function daireler(){
+ $("alist").innerHTML=S.apts.length?"<table><tr><th>No</th><th>Ad</th><th>Telefon</th><th>Aidat</th><th>Başlangıç</th><th></th></tr>"+S.apts.map(function(a){
+  return "<tr><td>"+esc(a.no)+"</td><td>"+esc(a.name)+"</td><td>"+esc(a.phone||"-")+"</td><td>"+tl(a.aidat)+"</td><td>"+mname(a.since)+"</td><td><button class='d' aria-label='Sil' data-id='"+a.id+"'>✕</button></td></tr>"}).join("")+"</table>":'<p class="empty">Henüz daire eklenmedi.</p>';
+ $("alist").querySelectorAll("button").forEach(function(b){b.onclick=function(){if(confirm("Daire silinsin mi?")){S.apts=S.apts.filter(function(a){return a.id!=b.dataset.id});save();all()}}});
+}
+function aidat(){
+ var m=$("pm").value||NOW,list=S.apts.filter(function(a){return a.since<=m});
+ $("plist").innerHTML=list.length?"<table><tr><th>Daire</th><th>Ad</th><th>Aidat</th><th>Ödendi</th></tr>"+list.map(function(a){
+  return "<tr><td>"+esc(a.no)+"</td><td>"+esc(a.name)+"</td><td>"+tl(a.aidat)+"</td><td><input type='checkbox' aria-label='Ödendi' data-id='"+a.id+"'"+(paid(m,a.id)?" checked":"")+"></td></tr>"}).join("")+"</table>":'<p class="empty">Bu ay için daire yok.</p>';
+ $("plist").querySelectorAll("input").forEach(function(c){c.onchange=function(){
+  var a=S.apts.filter(function(x){return x.id==c.dataset.id})[0];S.pays[m]=S.pays[m]||{};
+  if(c.checked)S.pays[m][a.id]=a.aidat;else delete S.pays[m][a.id];save();all()}});
+}
+function gider(){
+ $("glist").innerHTML=S.exp.length?"<table><tr><th>Tarih</th><th>Açıklama</th><th>Tutar</th><th></th></tr>"+S.exp.slice().sort(function(a,b){return a.date<b.date?1:-1}).map(function(g){
+  return "<tr><td>"+esc(g.date)+"</td><td>"+esc(g.desc)+"</td><td>"+tl(g.amt)+"</td><td><button class='d' aria-label='Sil' data-id='"+g.id+"'>✕</button></td></tr>"}).join("")+"</table>":'<p class="empty">Henüz gider yok.</p>';
+ $("glist").querySelectorAll("button").forEach(function(b){b.onclick=function(){S.exp=S.exp.filter(function(g){return g.id!=b.dataset.id});save();all()}});
+}
+function all(){alertBar();ozet();daireler();aidat();gider()}
+
+var tabs=[["ozet","Özet"],["daire","Daireler"],["aidat","Aidat takibi"],["gider","Giderler"]];
+tabs.forEach(function(t,i){var b=document.createElement("button");b.textContent=t[1];if(!i)b.className="on";
+ b.onclick=function(){tabs.forEach(function(x){$("v-"+x[0]).classList.add("hide")});$("v-"+t[0]).classList.remove("hide");
+ $("nav").querySelectorAll("button").forEach(function(y){y.className=""});b.className="on"};$("nav").appendChild(b)});
+
+$("fa").onsubmit=function(e){e.preventDefault();
+ S.apts.push({id:Date.now(),no:$("an").value,name:$("aname").value,phone:$("aph").value,aidat:+$("aam").value,since:$("asn").value});
+ save();this.reset();$("asn").value=NOW;all()};
+$("fg").onsubmit=function(e){e.preventDefault();
+ S.exp.push({id:Date.now(),date:$("gd").value,desc:$("gdesc").value,amt:+$("gam").value});save();this.reset();$("gd").value=now.toISOString().slice(0,10);all()};
+$("fdue").onsubmit=function(e){e.preventDefault();var v=+$("due").value;if(v>=1&&v<=28){S.due=v;save();all()}};
+$("pm").onchange=aidat;
+$("pm").value=NOW;$("asn").value=NOW;$("gd").value=now.toISOString().slice(0,10);
+all();
+</script>
+</body>
+</html>
